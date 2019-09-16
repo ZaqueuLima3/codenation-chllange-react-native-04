@@ -9,16 +9,24 @@ import {
   ScrollView,
   Animated,
   TouchableOpacity,
-  AsyncStorage
+  AsyncStorage,
+  Modal, 
+  StatusBar
 } from 'react-native';
-
-import CameraApp  from '../CameraApp';
 
 import { profile } from '../../data/profile'
 
 import styles from './style';
-
 export default class Profile extends React.PureComponent {
+  constructor(props) {
+    super(props);
+    this.camera = React.createRef();
+
+    if (global.window === undefined) {
+      global.window = global;
+    }
+  }
+
   fadeAnimation = new Animated.Value(0)
 
   state = {
@@ -34,10 +42,30 @@ export default class Profile extends React.PureComponent {
   }
 
   async componentDidMount() {
-      const { status } = await Permissions.askAsync(Permissions.CAMERA);
+    if (this.camera) {
+      global.window.camera = this.camera.current;
+    }
 
-      this.setState({ hasCameraPermission: status === 'granted' })
-      this.finishLoading()
+    const { status } = await Permissions.askAsync(Permissions.CAMERA);
+
+    this.setState({ hasCameraPermission: status === 'granted' })
+    this.finishLoading()
+  }
+
+  componentDidUpdate() {
+    if (this.camera) {
+      global.window.camera = this.camera.current;
+    }
+  }
+
+  handleTakePicture = async () => {
+    if (this.camera) {
+      let photo = await this.camera.current.takePictureAsync({ base64: true })
+      console.log(photo.base6);
+      this.setState({ userImage: `data:image/jpg;base64,${photo.base64}` });
+      await AsyncStorage.setItem('userImage', `data:image/jpg;base64,${photo.base64}`);
+      this.closeModal();
+    }
   }
 
   handleLoadImage = async () => {
@@ -48,19 +76,18 @@ export default class Profile extends React.PureComponent {
         this.setState({ userImage });
       }
     } catch (e) {
-      // error
+      console.error(error)
     }
   }
 
-  handleCloseModal = () => {
+  handleCloseCamera = () => {
     this.handleLoadImage();
     setTimeout(() => {
       this.setState({ modalVisible: false });
     },  500)
-    
   }
 
-  goToCamera = () => {
+  handleOpenCamera = () => {
     const { hasCameraPermission } = this.state;
     
     if (!!hasCameraPermission) {
@@ -84,7 +111,7 @@ export default class Profile extends React.PureComponent {
   }
 
   render() {
-    const { hasCameraPermission, userImage, modalVisible } = this.state;
+    const { userImage, modalVisible } = this.state;
 
     const profileImage = userImage || profile.picture;
 
@@ -102,7 +129,7 @@ export default class Profile extends React.PureComponent {
           <View style={styles.profileTitle}>
             <TouchableOpacity 
               className="profile-image-btn" 
-              onPress={this.goToCamera}
+              onPress={this.handleOpenCamera}
             >
               <Image
                 className="profile-image"
@@ -148,11 +175,47 @@ export default class Profile extends React.PureComponent {
               </View>
           </Animated.View>
         </ScrollView>
+
         {modalVisible && 
-          <CameraApp 
-            modalVisible={modalVisible}
-            closeModal={this.handleCloseModal} 
-          />
+          <Modal 
+          style={{ flex: 1 }}
+          animationType="slide"
+          transparent={false}
+          visible={modalVisible}
+          onRequestClose={this.handleCloseCamera}
+          >
+            <StatusBar hidden className="status-bar" />
+            <Camera 
+              className="camera-container" 
+              style={{ flex: 1 }} 
+              type={this.state.type}
+              ref={this.camera}
+            >
+              <View
+                style={{
+                  flex: 1,
+                  backgroundColor: 'transparent',
+                  flexDirection: 'row',
+                }}>
+                
+                <TouchableOpacity className="camera-close" onPress={this.handleCloseCamera} style={{padding: 10}}>
+                  <Text style={{ fontSize: 25, marginBottom: 10, color: 'white' }}>x</Text>
+                </TouchableOpacity>
+    
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    alignSelf: 'flex-end',
+                    alignItems: 'center',
+                  }}
+                  className="camera-shot"
+                  onPress={this.handleTakePicture}
+                >
+                  <Text style={{ fontSize: 18, marginBottom: 10, color: 'white' }}>Tirar foto</Text>
+                </TouchableOpacity>
+              </View>
+            </Camera>
+          </Modal>
         }
       </View>
     );
